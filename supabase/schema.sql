@@ -14,8 +14,18 @@ create table if not exists public.users (
   created_at    timestamptz not null default now()
 );
 
-create type transaction_direction as enum ('income', 'expense');
-create type transaction_source    as enum ('line_chat', 'gmail', 'manual');
+-- `create type` has no IF NOT EXISTS, so guard it explicitly: without this the
+-- whole script aborts on a re-run, and re-running is exactly what someone does
+-- after a partial failure.
+do $$ begin
+  create type transaction_direction as enum ('income', 'expense');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type transaction_source as enum ('line_chat', 'gmail', 'manual');
+exception when duplicate_object then null;
+end $$;
 
 create table if not exists public.transactions (
   id           uuid primary key default gen_random_uuid(),

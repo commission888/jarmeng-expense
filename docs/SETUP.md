@@ -42,7 +42,19 @@ npx localtunnel --port 3000     # หรือ ngrok http 3000
 
 ## 4. LIFF Dashboard
 
-1. สร้าง **LINE Login channel** แล้วเพิ่ม LIFF app
+> ### ⚠️ LINE Login channel ต้องอยู่ใต้ **provider เดียวกัน** กับ Messaging API channel
+>
+> LINE user ID ไม่ซ้ำกันในระดับ **provider** ไม่ใช่ระดับ channel
+>
+> - webhook เก็บข้อมูลด้วย `userId` จาก Messaging API channel
+> - dashboard ค้นหาผู้ใช้ด้วย `sub` จาก ID token ของ LINE Login channel
+>
+> สองค่านี้จะเป็นค่าเดียวกัน **ก็ต่อเมื่ออยู่ใต้ provider เดียวกัน** ถ้าสร้างคนละ
+> provider โค้ดจะไม่ error แต่ dashboard จะขึ้นว่าไม่มีรายการทุกครั้ง เพราะหา user
+> ไม่เจอ — เป็นอาการที่ debug ยากมาก ตรวจให้ดีตั้งแต่ตอนสร้าง
+
+1. ใน **provider เดียวกับ Messaging API channel** → สร้าง **LINE Login channel**
+   แล้วเพิ่ม LIFF app
    - Endpoint URL: `https://<โดเมนของคุณ>/liff`
    - Scope: `profile`, `openid`
 2. LIFF ID → `NEXT_PUBLIC_LIFF_ID`

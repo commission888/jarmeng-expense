@@ -11,6 +11,7 @@ import {
 } from '@/lib/repo/transactions';
 import { ensureUser } from '@/lib/repo/users';
 import { summarize } from '@/lib/summary';
+import type { TransactionDraft } from '@/lib/types';
 
 const HELP_TEXT = [
   'จาเหมง รายรับรายจ่าย 📒',
@@ -40,21 +41,28 @@ export async function handleTextMessage(
 
   if (HELP_COMMANDS.includes(command)) return HELP_TEXT;
 
-  const user = await ensureUser(lineUserId);
+  if (SUMMARY_COMMANDS.includes(command)) {
+    return buildSummaryReply((await ensureUser(lineUserId)).id);
+  }
 
-  if (SUMMARY_COMMANDS.includes(command)) return buildSummaryReply(user.id);
-  if (UNDO_COMMANDS.includes(command)) return undoLatest(user.id);
+  if (UNDO_COMMANDS.includes(command)) {
+    return undoLatest((await ensureUser(lineUserId)).id);
+  }
 
-  return recordTransaction(user.id, text);
-}
-
-async function recordTransaction(userId: string, text: string): Promise<string | null> {
   const draft = extractDraft(text);
 
   // No amount in the message — stay quiet rather than reply to every message
-  // in a group chat.
+  // in a group chat, and don't create a user row for someone who only said
+  // "สวัสดี".
   if (!draft) return null;
 
+  return recordTransaction((await ensureUser(lineUserId)).id, draft);
+}
+
+async function recordTransaction(
+  userId: string,
+  draft: TransactionDraft,
+): Promise<string> {
   const parsed = await categorize(draft, {
     lookupKeyword: (key) => lookupKeyword(userId, key),
     rememberKeyword: (key, hit) => rememberKeyword(userId, key, hit),

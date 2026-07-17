@@ -13,6 +13,12 @@ interface VerifiedIdToken {
  * The `client_id` is what binds the token to *our* channel: LINE checks it
  * against the token's `aud`, so without it a token minted for any other LINE
  * app would verify successfully here.
+ *
+ * The returned `sub` is matched against the `line_user_id` the webhook wrote.
+ * Those agree only while the LINE Login channel and the Messaging API channel
+ * sit under the SAME provider — LINE user ids are unique per provider, not per
+ * channel. Split them across providers and every dashboard lookup silently
+ * misses. See docs/SETUP.md § 4.
  */
 export async function verifyIdToken(idToken: string): Promise<VerifiedIdToken | null> {
   const channelId = env.LINE_LOGIN_CHANNEL_ID;
