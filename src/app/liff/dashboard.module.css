@@ -1,0 +1,185 @@
+/* Design tokens for the dashboard. Dark values are declared under both the OS
+   media query and the explicit theme stamp so a user toggle wins either way. */
+.root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --page: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --border: rgba(11, 11, 11, 0.1);
+  --gridline: #e1e0d9;
+  /* One hue for every bar: the category name carries identity, so color
+     doesn't need to — which sidesteps an 8-way categorical palette. */
+  --bar: #2a78d6;
+  --bar-track: #e1e0d9;
+  --good: #0ca30c;
+  --critical: #d03b3b;
+
+  min-height: 100vh;
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  padding: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) .root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --border: rgba(255, 255, 255, 0.1);
+    --gridline: #2c2c2a;
+    --bar: #3987e5;
+    --bar-track: #2c2c2a;
+  }
+}
+
+:root[data-theme='dark'] .root {
+  color-scheme: dark;
+  --surface-1: #1a1a19;
+  --page: #0d0d0d;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --border: rgba(255, 255, 255, 0.1);
+  --gridline: #2c2c2a;
+  --bar: #3987e5;
+  --bar-track: #2c2c2a;
+}
+
+.header {
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.month {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tile {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.tileLabel {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tileValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.good {
+  color: var(--good);
+}
+
+.critical {
+  color: var(--critical);
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.cardTitle {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.barRow {
+  display: grid;
+  gap: 4px;
+}
+
+.barLabels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.barValue {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.barTrack {
+  background: var(--bar-track);
+  border-radius: 4px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.barFill {
+  background: var(--bar);
+  border-radius: 4px;
+  height: 100%;
+  min-width: 2px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.75rem;
+  padding-bottom: 6px;
+}
+
+.table td {
+  border-top: 1px solid var(--gridline);
+  padding: 8px 0;
+}
+
+.amountCell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tableScroll {
+  overflow-x: auto;
+}
+
+.muted {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
