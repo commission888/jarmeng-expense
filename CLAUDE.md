@@ -19,3 +19,9 @@
 - `LINE_LOGIN_CHANNEL_ID` is zod-optional but security-critical: without it, ID-token `aud` is not checked and any LINE user's token passes verification.
 - Optional / later phases: `GEMINI_MODEL` (defaults to `gemini-2.5-flash`), `CRON_SECRET` (Phase 3 cron), `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` (Phase 2 Gmail sync).
 - `SUPABASE_SERVICE_ROLE_KEY` is server-only — never expose it to the browser.
+
+## Status & roadmap (as of 2026-07-19)
+- **Live and working:** LINE webhook, chat recording/summary/undo, and the LIFF dashboard are confirmed working end-to-end. Home page and the dashboard loading skeleton are done.
+- **Phase 2 — Gmail sync (not implemented):** OAuth flow, tables, and repo helpers exist. Remaining: implement `src/app/api/cron/gmail-sync/route.ts` (5-step recipe in its comment), add a "connect Gmail" button to the dashboard, and add the cron schedule to `vercel.json`. Needs `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` + `CRON_SECRET`. Encrypt `refresh_token` at rest before production (PDPA).
+- **Phase 3 — monthly report (not implemented):** `bangkokMonthRange` / `listTransactions` / `summarize` already exist. Remaining: implement `src/app/api/cron/monthly-report/route.ts` (4-step recipe in its comment), add a `listAllUsers` paginating helper, and add the cron schedule to `vercel.json`. Needs `CRON_SECRET`. Uses metered LINE **push** messages — budget before enabling.
+- The scaffold route comments carry the authoritative step-by-step for each phase. Read `docs/PRD_Expense_Tracker_Updated.md` and `docs/SETUP.md` before implementing.
