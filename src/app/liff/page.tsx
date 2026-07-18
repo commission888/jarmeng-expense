@@ -49,9 +49,12 @@ export default function LiffDashboard() {
         {state.status === 'ready' && (
           <p className={styles.month}>เดือน{state.data.month}</p>
         )}
+        {state.status === 'loading' && (
+          <div className={`${styles.skel} ${styles.skelMonth}`} />
+        )}
       </header>
 
-      {state.status === 'loading' && <p className={styles.muted}>กำลังโหลด…</p>}
+      {state.status === 'loading' && <LoadingSkeleton />}
       {state.status === 'error' && <p className={styles.muted}>{state.message}</p>}
       {state.status === 'ready' && <Dashboard data={state.data} />}
     </main>
@@ -84,6 +87,49 @@ async function load(): Promise<DashboardData> {
   if (!response.ok) throw new Error('โหลดข้อมูลไม่สำเร็จ');
 
   return (await response.json()) as DashboardData;
+}
+
+/**
+ * Placeholder shown while liff.init, the login round-trip, and the summary
+ * fetch resolve. It mirrors the real dashboard's structure so the layout is
+ * settled before data lands — nothing jumps when it does.
+ */
+function LoadingSkeleton() {
+  return (
+    <div aria-busy="true" aria-live="polite">
+      <span className={styles.srOnly}>กำลังโหลดข้อมูล…</span>
+
+      <section className={styles.tiles}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} className={styles.tile}>
+            <div className={`${styles.skel} ${styles.skelTileLabel}`} />
+            <div className={`${styles.skel} ${styles.skelTileValue}`} />
+          </div>
+        ))}
+      </section>
+
+      <section className={styles.card}>
+        <div className={`${styles.skel} ${styles.skelTitle}`} />
+        <div className={styles.bars}>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className={styles.barRow}>
+              <div className={`${styles.skel} ${styles.skelBarLabel}`} />
+              <div className={`${styles.skel} ${styles.skelBarTrack}`} />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className={styles.card}>
+        <div className={`${styles.skel} ${styles.skelTitle}`} />
+        <div className={styles.skelRows}>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className={`${styles.skel} ${styles.skelRow}`} />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function Dashboard({ data }: { data: DashboardData }) {

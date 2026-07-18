@@ -15,6 +15,10 @@
   --bar-track: #e1e0d9;
   --good: #0ca30c;
   --critical: #d03b3b;
+  /* Skeleton base tracks --bar-track so it flips with the theme automatically;
+     only the sweep highlight needs a per-theme value. */
+  --skeleton: var(--bar-track);
+  --skeleton-shine: rgba(255, 255, 255, 0.55);
 
   min-height: 100vh;
   background: var(--page);
@@ -34,6 +38,7 @@
     --gridline: #2c2c2a;
     --bar: #3987e5;
     --bar-track: #2c2c2a;
+    --skeleton-shine: rgba(255, 255, 255, 0.05);
   }
 }
 
@@ -47,6 +52,7 @@
   --gridline: #2c2c2a;
   --bar: #3987e5;
   --bar-track: #2c2c2a;
+  --skeleton-shine: rgba(255, 255, 255, 0.05);
 }
 
 .header {
@@ -182,4 +188,98 @@
 .muted {
   color: var(--text-secondary);
   font-size: 0.875rem;
+}
+
+/* ── Loading skeleton ──────────────────────────────────────────── */
+
+.skel {
+  position: relative;
+  overflow: hidden;
+  background: var(--skeleton);
+  border-radius: 6px;
+}
+
+.skel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--skeleton-shine),
+    transparent
+  );
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Honour a user's reduced-motion setting: hold a static placeholder. */
+@media (prefers-reduced-motion: reduce) {
+  .skel::after {
+    animation: none;
+  }
+}
+
+.skelMonth {
+  height: 14px;
+  width: 96px;
+  margin-top: 6px;
+}
+
+.skelTitle {
+  height: 15px;
+  width: 40%;
+  margin-bottom: 14px;
+}
+
+.skelTileLabel {
+  height: 12px;
+  width: 55%;
+}
+
+.skelTileValue {
+  height: 22px;
+  width: 80%;
+  margin-top: 10px;
+}
+
+.skelBarLabel {
+  height: 12px;
+  width: 45%;
+}
+
+.skelBarTrack {
+  height: 8px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.skelRows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skelRow {
+  height: 16px;
+  width: 100%;
+}
+
+/* Visually hidden, but announced to screen readers. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
