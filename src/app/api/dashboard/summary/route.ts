@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { bangkokMonthRange } from '@/lib/format';
+import { bangkokMonthRange, bangkokMonthRangeForKey, isValidMonthKey } from '@/lib/format';
 import { bearerToken, verifyIdToken } from '@/lib/line/verify-id-token';
 import { listTransactions } from '@/lib/repo/transactions';
 import { findUserByLineId } from '@/lib/repo/users';
@@ -23,14 +23,25 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Invalid ID token' }, { status: 401 });
   }
 
+  // `month` only chooses the date window; the user is always scoped by the
+  // verified token, so it can't be used to read someone else's data.
+  const monthParam = new URL(request.url).searchParams.get('month');
+
+  if (monthParam && !isValidMonthKey(monthParam)) {
+    return NextResponse.json({ error: 'Invalid month' }, { status: 400 });
+  }
+
   const user = await findUserByLineId(verified.lineUserId);
-  const { from, to, label } = bangkokMonthRange();
+  const { from, to, label, key } = monthParam
+    ? bangkokMonthRangeForKey(monthParam)
+    : bangkokMonthRange();
 
   // A user who has never messaged the bot has no row yet — that's an empty
   // dashboard, not an error.
   if (!user) {
     return NextResponse.json({
       month: label,
+      monthKey: key,
       summary: summarize([]),
       transactions: [],
     });
@@ -40,6 +51,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     month: label,
+    monthKey: key,
     summary: summarize(transactions),
     transactions,
   });

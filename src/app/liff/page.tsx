@@ -2,39 +2,48 @@
 
 import { useEffect, useState } from 'react';
 
-import { categoryLabel, formatBaht } from '@/lib/format';
+import {
+  categoryLabel,
+  currentMonthKey,
+  formatBaht,
+  monthLabel,
+  shiftMonth,
+} from '@/lib/format';
 import type { TransactionRecord } from '@/lib/repo/transactions';
 import type { Summary } from '@/lib/summary';
 import styles from './dashboard.module.css';
 
 interface DashboardData {
   month: string;
+  monthKey: string;
   summary: Summary;
   transactions: TransactionRecord[];
 }
 
-type State =
-  | { status: 'loading' }
+type LoadedBody =
   | { status: 'error'; message: string }
   | { status: 'ready'; data: DashboardData };
 
 export default function LiffDashboard() {
-  const [state, setState] = useState<State>({ status: 'loading' });
+  const [token, setToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  // The client owns the selected month, so the picker stays responsive without
+  // waiting for the server to echo it back.
+  const [monthKey, setMonthKey] = useState<string>(() => currentMonthKey());
+  // The fetch outcome is tagged with the month it belongs to, so a stale result
+  // never paints over a month the user has since switched to.
+  const [result, setResult] = useState<{ key: string; body: LoadedBody } | null>(null);
 
+  // Init LIFF once and hold the ID token; month changes reuse it.
   useEffect(() => {
     let cancelled = false;
 
-    load()
-      .then((data) => {
-        if (!cancelled) setState({ status: 'ready', data });
+    initLiff()
+      .then((idToken) => {
+        if (!cancelled) setToken(idToken);
       })
       .catch((error: unknown) => {
-        if (!cancelled) {
-          setState({
-            status: 'error',
-            message: error instanceof Error ? error.message : 'เกิดข้อผิดพลาด',
-          });
-        }
+        if (!cancelled) setTokenError(errorMessage(error));
       });
 
     return () => {
@@ -42,26 +51,100 @@ export default function LiffDashboard() {
     };
   }, []);
 
+  // Refetch whenever the token arrives or the month changes. The cancelled guard
+  // makes the latest selection win when a user taps through months quickly.
+  useEffect(() => {
+    if (!token) return;
+
+    let cancelled = false;
+
+    fetchSummary(token, monthKey)
+      .then((data) => {
+        if (!cancelled) setResult({ key: monthKey, body: { status: 'ready', data } });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setResult({ key: monthKey, body: { status: 'error', message: errorMessage(error) } });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, monthKey]);
+
+  // Loading is derived, not stored: we're loading whenever the latest result
+  // doesn't yet match the selected month. Avoids a synchronous setState on switch.
+  const body: { status: 'loading' } | LoadedBody = tokenError
+    ? { status: 'error', message: tokenError }
+    : token && result?.key === monthKey
+      ? result.body
+      : { status: 'loading' };
+
   return (
     <main className={styles.root}>
       <header className={styles.header}>
         <h1 className={styles.title}>จาเหมง รายรับรายจ่าย</h1>
-        {state.status === 'ready' && (
-          <p className={styles.month}>เดือน{state.data.month}</p>
-        )}
-        {state.status === 'loading' && (
+        {token ? (
+          <MonthNav monthKey={monthKey} onChange={setMonthKey} />
+        ) : (
           <div className={`${styles.skel} ${styles.skelMonth}`} />
         )}
       </header>
 
-      {state.status === 'loading' && <LoadingSkeleton />}
-      {state.status === 'error' && <p className={styles.muted}>{state.message}</p>}
-      {state.status === 'ready' && <Dashboard data={state.data} />}
+      {body.status === 'loading' && <LoadingSkeleton />}
+      {body.status === 'error' && <p className={styles.muted}>{body.message}</p>}
+      {body.status === 'ready' && <Dashboard data={body.data} />}
     </main>
   );
 }
 
-async function load(): Promise<DashboardData> {
+/**
+ * Month picker: step back and forward a month at a time. "Next" is disabled at
+ * the current month — there's nothing to see in the future. Rendered in every
+ * body state so a loading or errored month never traps the user.
+ */
+function MonthNav({
+  monthKey,
+  onChange,
+}: {
+  monthKey: string;
+  onChange: (key: string) => void;
+}) {
+  // Zero-padded YYYY-MM compares correctly as plain strings.
+  const atCurrent = monthKey >= currentMonthKey();
+
+  return (
+    <div className={styles.monthNav}>
+      <button
+        type="button"
+        className={styles.navBtn}
+        onClick={() => onChange(shiftMonth(monthKey, -1))}
+        aria-label="เดือนก่อนหน้า"
+      >
+        ‹
+      </button>
+      <span className={styles.monthLabel} aria-live="polite">
+        เดือน{monthLabel(monthKey)}
+      </span>
+      <button
+        type="button"
+        className={styles.navBtn}
+        onClick={() => onChange(shiftMonth(monthKey, 1))}
+        disabled={atCurrent}
+        aria-label="เดือนถัดไป"
+      >
+        ›
+      </button>
+    </div>
+  );
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'เกิดข้อผิดพลาด';
+}
+
+async function initLiff(): Promise<string> {
   const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
   if (!liffId) throw new Error('ยังไม่ได้ตั้งค่า NEXT_PUBLIC_LIFF_ID');
 
@@ -74,14 +157,18 @@ async function load(): Promise<DashboardData> {
   if (!liff.isLoggedIn()) {
     liff.login();
     // login() navigates away; nothing after this runs.
-    return new Promise<DashboardData>(() => {});
+    return new Promise<string>(() => {});
   }
 
   const idToken = liff.getIDToken();
   if (!idToken) throw new Error('ไม่พบ ID token กรุณาเข้าสู่ระบบใหม่');
 
-  const response = await fetch('/api/dashboard/summary', {
-    headers: { Authorization: `Bearer ${idToken}` },
+  return idToken;
+}
+
+async function fetchSummary(token: string, monthKey: string): Promise<DashboardData> {
+  const response = await fetch(`/api/dashboard/summary?month=${monthKey}`, {
+    headers: { Authorization: `Bearer ${token}` },
   });
 
   if (!response.ok) throw new Error('โหลดข้อมูลไม่สำเร็จ');
