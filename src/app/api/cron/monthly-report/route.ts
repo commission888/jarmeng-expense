@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { authorizeCron } from '@/lib/cron-auth';
 import { bangkokMonthRange } from '@/lib/format';
 import { lineClient } from '@/lib/line/client';
+import { claimMonthlyReport, releaseMonthlyReport } from '@/lib/repo/report-log';
 import { listTransactions } from '@/lib/repo/transactions';
 import { listAllUsers } from '@/lib/repo/users';
 import { buildReportFlex } from '@/lib/report';
@@ -20,9 +21,11 @@ export const dynamic = 'force-dynamic';
  *
  * GET, not POST: Vercel Cron invokes the path with a GET and, when `CRON_SECRET`
  * is set, injects `Authorization: Bearer <secret>` — which is what `authorizeCron`
- * checks. Per-user failures are swallowed so one bad recipient can't abort the
- * run; a total failure lets Vercel retry, which re-sends from the top — acceptable
- * at this scale, revisit with a "sent this month" ledger if the user base grows.
+ * checks. Per-user failures are swallowed so one bad recipient can't abort the run.
+ *
+ * Idempotent across retries: each user's report is claimed in `sent_reports`
+ * before the push, so a retried or overlapping run skips anyone already sent this
+ * month. A failed push releases its claim so the next run can retry that user.
  */
 export async function GET(request: Request) {
   const denied = authorizeCron(request);
@@ -31,12 +34,13 @@ export async function GET(request: Request) {
   // The 1st of the new month has just begun in Bangkok; step back one second to
   // land in the month we're reporting on.
   const thisMonth = bangkokMonthRange();
-  const { from, to, label } = bangkokMonthRange(new Date(thisMonth.from.getTime() - 1000));
+  const { from, to, label, key } = bangkokMonthRange(new Date(thisMonth.from.getTime() - 1000));
 
   const users = await listAllUsers();
 
   let sent = 0;
   let skipped = 0;
+  let alreadySent = 0;
   let failed = 0;
 
   for (const user of users) {
@@ -48,19 +52,39 @@ export async function GET(request: Request) {
         continue;
       }
 
-      const summary = summarize(transactions);
+      // Claim before sending so a retried run can't push the same report twice.
+      if (!(await claimMonthlyReport(user.id, key))) {
+        alreadySent += 1;
+        continue;
+      }
 
-      await lineClient().pushMessage({
-        to: user.line_user_id,
-        messages: [buildReportFlex(label, summary)],
-      });
+      try {
+        const summary = summarize(transactions);
 
-      sent += 1;
+        await lineClient().pushMessage({
+          to: user.line_user_id,
+          messages: [buildReportFlex(label, summary)],
+        });
+
+        sent += 1;
+      } catch (pushError) {
+        // Give the claim back so the next run retries this user rather than
+        // silently dropping their report.
+        await releaseMonthlyReport(user.id, key);
+        throw pushError;
+      }
     } catch (error) {
       failed += 1;
       console.error(`Monthly report failed for user ${user.id}`, error);
     }
   }
 
-  return NextResponse.json({ month: label, users: users.length, sent, skipped, failed });
+  return NextResponse.json({
+    month: label,
+    users: users.length,
+    sent,
+    skipped,
+    alreadySent,
+    failed,
+  });
 }

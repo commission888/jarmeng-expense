@@ -98,6 +98,23 @@ create table if not exists public.processed_emails (
 );
 
 -- ─────────────────────────────────────────────────────────────
+-- Phase 3: monthly report — idempotency ledger
+-- ─────────────────────────────────────────────────────────────
+
+-- One row per user per reporting month, claimed *before* the push goes out.
+-- The unique constraint is the dedupe guard: if Vercel retries the cron after a
+-- partial run, users already sent this month conflict and are skipped rather
+-- than pushed (and billed) a second time. A push that fails releases its claim
+-- so the next run can retry that user.
+create table if not exists public.sent_reports (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references public.users(id) on delete cascade,
+  period_key  text not null,  -- 'YYYY-MM', the Bangkok month reported on
+  sent_at     timestamptz not null default now(),
+  unique (user_id, period_key)
+);
+
+-- ─────────────────────────────────────────────────────────────
 -- RLS: every table is closed. All access goes through the server
 -- with the service-role key, after the caller's LINE identity is verified.
 -- ─────────────────────────────────────────────────────────────
@@ -107,3 +124,4 @@ alter table public.transactions     enable row level security;
 alter table public.keywords         enable row level security;
 alter table public.gmail_accounts   enable row level security;
 alter table public.processed_emails enable row level security;
+alter table public.sent_reports     enable row level security;
