@@ -84,11 +84,23 @@ OAuth flow ใช้งานได้แล้ว แต่ตัว sync ย�
 > ในตารางที่เข้าถึงได้เฉพาะ service-role ซึ่งเพียงพอสำหรับ dev แต่ token นี้คือสิทธิ์
 > อ่านเมลระยะยาว ควรเข้ารหัสก่อนเก็บ (เช่น Supabase Vault) ตามข้อกำหนด PDPA ใน PRD
 
-## Phase 3 — Monthly report (ยังไม่เสร็จ)
+## Phase 3 — Monthly report (เสร็จแล้ว ✅ — เหลือตั้งค่า)
 
-ฟังก์ชันสรุปพร้อมแล้ว (`summarize()`, `bangkokMonthRange()`) เหลือส่วนวน user
-และ push message — ดู TODO ใน
-[`src/app/api/cron/monthly-report/route.ts`](../src/app/api/cron/monthly-report/route.ts)
+โค้ดพร้อมแล้ว: [`src/app/api/cron/monthly-report/route.ts`](../src/app/api/cron/monthly-report/route.ts)
+วน user ทั้งหมด (`listAllUsers()`), สรุปเดือนก่อน, แล้ว push Flex report
+พร้อมคำแนะนำการออม (`buildReportFlex()` / `savingsAdvice()`). Schedule อยู่ใน
+[`vercel.json`](../vercel.json) แล้ว: `0 1 1 * *` (08:00 น. เวลาไทย วันที่ 1 ของเดือน)
 
-เมื่อทำเสร็จให้เพิ่ม schedule ใน `vercel.json` และตั้ง `CRON_SECRET`
-(route จะปฏิเสธการเรียกทั้งหมดจนกว่าจะตั้งค่า — fail closed โดยตั้งใจ)
+ก่อนใช้งานจริงต้อง:
+
+1. ตั้ง `CRON_SECRET` ใน Vercel — route จะ **ปฏิเสธทุกการเรียกจนกว่าจะตั้งค่า**
+   (fail closed โดยตั้งใจ) Vercel Cron จะแนบ `Authorization: Bearer <CRON_SECRET>`
+   ให้เองเมื่อ env นี้ถูกตั้ง
+2. Route เป็น **GET** เพราะ Vercel Cron เรียกด้วย GET (ไม่ใช่ POST)
+3. Push messages มีค่าใช้จ่าย (metered) — เช็ค quota ของแพ็กเกจ LINE ก่อนเปิด
+4. ยืนยันว่าแพ็กเกจ Vercel รองรับ cron แบบ day-of-month (Hobby เคยจำกัดความถี่)
+
+> **ความเสี่ยงที่ยอมรับได้ในเวอร์ชันนี้:** ถ้า cron ล้มกลางคัน Vercel จะ retry
+> และส่งซ้ำตั้งแต่ต้น (ยังไม่มี ledger กัน "ส่งไปแล้วเดือนนี้") — โอเคที่ผู้ใช้น้อย
+> ค่อยเพิ่ม guard ถ้าฐานผู้ใช้โต ส่วน error ราย user ถูกกลืนไว้แล้ว user เสียคนเดียว
+> ไม่ล้มทั้ง run
