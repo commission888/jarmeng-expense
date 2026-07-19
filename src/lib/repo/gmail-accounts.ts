@@ -73,7 +73,8 @@ export async function claimEmail(userId: string, messageId: string): Promise<boo
 /**
  * Releases a claim so a later run can retry the message. Called when extraction
  * *throws* (a transient AI/network error) — a message that merely isn't a
- * transaction keeps its claim so it's skipped for good.
+ * transaction keeps its claim so it's skipped for good. Best-effort: retry only
+ * happens if the message still falls in the next run's (advancing) sync window.
  */
 export async function releaseEmail(userId: string, messageId: string): Promise<void> {
   const { error } = await supabase()

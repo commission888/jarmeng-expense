@@ -19,6 +19,11 @@ import type { TransactionDraft } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// Each message is a fetch plus up to two sequential Gemini calls, so give the
+// batch room. `listMessageIds` caps at 50 with no pagination: one run is bounded,
+// and because a timed-out run skips `markSynced` while `claimEmail` dedupes what
+// already landed, successive runs make forward progress over a large backlog.
+export const maxDuration = 60;
 
 /**
  * Phase 2 — Gmail sync.
@@ -36,7 +41,9 @@ export const dynamic = 'force-dynamic';
  *
  * Claim semantics (via `processed_emails`): claim before extracting. A message
  * that isn't a transaction keeps its claim (skip it for good); a message whose
- * processing *throws* releases its claim so the next run retries it.
+ * processing *throws* releases its claim. Note the retry is best-effort: the
+ * account's sync window always advances (so a poison message can't wedge it),
+ * so a released message is only re-listed if it falls in the next run's window.
  */
 export async function GET(request: Request) {
   const denied = authorizeCron(request);
