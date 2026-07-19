@@ -1,35 +1,118 @@
 import { NextResponse } from 'next/server';
 
+import { GeminiClassifier } from '@/lib/ai/gemini';
+import { GeminiEmailExtractor } from '@/lib/ai/gemini-email';
 import { authorizeCron } from '@/lib/cron-auth';
+import { buildSyncQuery, getMessage, listMessageIds } from '@/lib/gmail/api';
+import { refreshAccessToken } from '@/lib/gmail/oauth';
+import { keywordKey } from '@/lib/parser/draft';
+import { categorize, type CategorizeDeps } from '@/lib/parser/categorize';
+import {
+  claimEmail,
+  listGmailAccounts,
+  markSynced,
+  releaseEmail,
+} from '@/lib/repo/gmail-accounts';
+import { lookupKeyword, rememberKeyword, touchKeyword } from '@/lib/repo/keywords';
+import { insertTransaction } from '@/lib/repo/transactions';
+import type { TransactionDraft } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * Phase 2 — SCAFFOLD, NOT IMPLEMENTED.
+ * Phase 2 — Gmail sync.
  *
- * The OAuth half of Gmail sync is done (`/api/gmail/connect` → `/api/gmail/callback`
- * stores a refresh token), and the tables it needs exist. What remains:
+ * For each connected mailbox: refresh the access token, pull recent bank/payment
+ * mail newer than the last sync, and for each new message extract the
+ * transaction with the AI, categorize it (reusing the chat path's keyword
+ * learning), and record it as a `gmail` transaction.
  *
- *   1. for each row in `gmail_accounts`: refreshAccessToken(refresh_token)
- *   2. users.messages.list with a bank/payment sender query, newer_than the
- *      account's last_synced_at
- *   3. claimEmail(userId, messageId) — skip when it returns false (dedupe)
- *   4. extract amount/merchant/date from the body via an AI classifier, then
- *      reuse `categorize()` so keyword learning is shared with the chat path
- *   5. insertTransaction(..., source: 'gmail'), then markSynced(account.id)
+ * GET, not POST: Vercel Cron invokes with GET and injects the `CRON_SECRET`
+ * bearer that `authorizeCron` checks. Wire the schedule in `vercel.json`.
  *
- * Per the PRD's PDPA line, step 4 must persist only the extracted fields —
- * never the email body.
+ * PDPA: the email body lives only in memory on its way to the extractor — only
+ * the extracted fields are persisted, never the body.
  *
- * Wire the schedule in vercel.json once implemented.
+ * Claim semantics (via `processed_emails`): claim before extracting. A message
+ * that isn't a transaction keeps its claim (skip it for good); a message whose
+ * processing *throws* releases its claim so the next run retries it.
  */
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   const denied = authorizeCron(request);
   if (denied) return denied;
 
-  return NextResponse.json(
-    { error: 'Gmail sync is not implemented yet (Phase 2).' },
-    { status: 501 },
-  );
+  const accounts = await listGmailAccounts();
+  const extractor = new GeminiEmailExtractor();
+  const classifier = new GeminiClassifier();
+
+  let recorded = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const account of accounts) {
+    try {
+      const accessToken = await refreshAccessToken(account.refresh_token);
+      const ids = await listMessageIds(accessToken, buildSyncQuery(account.last_synced_at));
+
+      for (const id of ids) {
+        // Dedupe: Gmail redelivers, and a boundary-day overlap re-lists messages.
+        if (!(await claimEmail(account.user_id, id))) {
+          skipped += 1;
+          continue;
+        }
+
+        try {
+          const message = await getMessage(accessToken, id);
+          const extracted = await extractor.extract({
+            subject: message.subject,
+            from: message.from,
+            text: message.text,
+          });
+
+          // Not a transaction (OTP, promo). Keep the claim so we never re-ask.
+          if (!extracted) {
+            skipped += 1;
+            continue;
+          }
+
+          const draft: TransactionDraft = {
+            amount: extracted.amount,
+            description: extracted.merchant,
+            direction: extracted.direction,
+            // The extractor decided the direction from the email — lock it.
+            directionExplicit: true,
+          };
+
+          const deps: CategorizeDeps = {
+            lookupKeyword: (key) => lookupKeyword(account.user_id, key),
+            rememberKeyword: (key, hit) => rememberKeyword(account.user_id, key, hit),
+            ai: classifier,
+          };
+
+          const parsed = await categorize(draft, deps);
+          await insertTransaction(account.user_id, parsed, 'gmail', message.receivedAt);
+
+          if (parsed.categorySource === 'keyword') {
+            void touchKeyword(account.user_id, keywordKey(draft.description));
+          }
+
+          recorded += 1;
+        } catch (messageError) {
+          // Transient failure — give the claim back so the next run retries.
+          await releaseEmail(account.user_id, id);
+          failed += 1;
+          console.error(`Gmail sync failed for message ${id}`, messageError);
+        }
+      }
+
+      // Only advance the window after a clean pass over this account.
+      await markSynced(account.id);
+    } catch (accountError) {
+      failed += 1;
+      console.error(`Gmail sync failed for account ${account.id}`, accountError);
+    }
+  }
+
+  return NextResponse.json({ accounts: accounts.length, recorded, skipped, failed });
 }

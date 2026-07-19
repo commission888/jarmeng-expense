@@ -95,7 +95,53 @@ export default function LiffDashboard() {
       {body.status === 'loading' && <LoadingSkeleton />}
       {body.status === 'error' && <p className={styles.muted}>{body.message}</p>}
       {body.status === 'ready' && <Dashboard data={body.data} />}
+
+      {token && <ConnectGmail token={token} />}
     </main>
+  );
+}
+
+/**
+ * Starts Gmail consent: asks the server for the Google URL (authenticated with
+ * the ID token we already hold) and navigates there. Shown regardless of body
+ * state — re-connecting is a harmless upsert, so there's no need to first probe
+ * whether a mailbox is already linked.
+ */
+function ConnectGmail({ token }: { token: string }) {
+  const [phase, setPhase] = useState<'idle' | 'starting' | 'error'>('idle');
+
+  async function connect() {
+    setPhase('starting');
+    try {
+      const response = await fetch('/api/gmail/connect', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error();
+
+      const { url } = (await response.json()) as { url: string };
+      window.location.href = url;
+    } catch {
+      setPhase('error');
+    }
+  }
+
+  return (
+    <section className={styles.card}>
+      <h2 className={styles.cardTitle}>เชื่อมต่ออีเมล</h2>
+      <p className={styles.muted}>ดึงรายจ่ายจากอีเมลแจ้งเตือนธนาคารเข้าระบบให้อัตโนมัติ</p>
+      <button
+        type="button"
+        className={styles.connectBtn}
+        onClick={connect}
+        disabled={phase === 'starting'}
+      >
+        {phase === 'starting' ? 'กำลังเปิด…' : 'เชื่อมต่อ Gmail'}
+      </button>
+      {phase === 'error' && (
+        <p className={styles.muted}>เริ่มการเชื่อมต่อไม่สำเร็จ ลองใหม่อีกครั้งครับ</p>
+      )}
+    </section>
   );
 }
 

@@ -227,6 +227,25 @@
   font-size: 0.875rem;
 }
 
+.connectBtn {
+  margin-top: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bar);
+  color: #ffffff;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.connectBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* ── Loading skeleton ──────────────────────────────────────────── */
 
 .skel {

@@ -18,6 +18,8 @@ const schema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().url().optional(),
+  // 32 bytes as 64 hex chars — encrypts Gmail refresh tokens at rest (PDPA).
+  TOKEN_ENCRYPTION_KEY: z.string().optional(),
 
   CRON_SECRET: z.string().optional(),
 });

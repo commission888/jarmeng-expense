@@ -69,20 +69,29 @@ npx localtunnel --port 3000     # หรือ ngrok http 3000
 2. ใส่ env ทุกตัวใน **Settings → Environment Variables**
 3. อัปเดต Webhook URL และ LIFF Endpoint ให้ชี้โดเมน production
 
-## Phase 2 — Gmail (ยังไม่เสร็จ)
+## Phase 2 — Gmail sync (เสร็จแล้ว ✅ — เหลือตั้งค่า)
 
-OAuth flow ใช้งานได้แล้ว แต่ตัว sync ยังเป็นโครง — ดู TODO ใน
-[`src/app/api/cron/gmail-sync/route.ts`](../src/app/api/cron/gmail-sync/route.ts)
+โค้ดพร้อมแล้ว: [`src/app/api/cron/gmail-sync/route.ts`](../src/app/api/cron/gmail-sync/route.ts)
+(GET handler) ดึงเมลแจ้งเตือนธนาคาร → สกัดรายการด้วย AI (`src/lib/ai/gemini-email.ts`)
+→ `categorize()` (แชร์ keyword learning กับแชท) → บันทึกเป็น transaction `source='gmail'`.
+Gmail API client + query อยู่ที่ `src/lib/gmail/api.ts` (มี unit test). Schedule อยู่ใน
+[`vercel.json`](../vercel.json) แล้ว: `0 2 * * *` (09:00 น. เวลาไทย ทุกวัน).
 
-ถ้าจะทำต่อ:
+ก่อนใช้งานจริงต้อง:
 
 1. Google Cloud Console → เปิด **Gmail API** → สร้าง OAuth client (Web)
 2. Authorized redirect URI: `https://<โดเมน>/api/gmail/callback`
-3. ใส่ `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
+3. ตั้ง env ใน Vercel: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`,
+   `TOKEN_ENCRYPTION_KEY` (สุ่ม `openssl rand -hex 32`) และ `CRON_SECRET` → **redeploy**
+4. เปิด LIFF dashboard → กดปุ่ม **เชื่อมต่อ Gmail** → ยินยอมสิทธิ์
+5. รอ cron รอบถัดไป หรือยิงเองด้วย `Authorization: Bearer <CRON_SECRET>`
 
-> **ก่อนขึ้น production:** ตอนนี้ `gmail_accounts.refresh_token` เก็บเป็น plaintext
-> ในตารางที่เข้าถึงได้เฉพาะ service-role ซึ่งเพียงพอสำหรับ dev แต่ token นี้คือสิทธิ์
-> อ่านเมลระยะยาว ควรเข้ารหัสก่อนเก็บ (เช่น Supabase Vault) ตามข้อกำหนด PDPA ใน PRD
+> **PDPA:** `gmail_accounts.refresh_token` ถูกเข้ารหัส AES-256-GCM ที่ repo boundary
+> (`src/lib/crypto.ts`, ใช้ `TOKEN_ENCRYPTION_KEY`) และตัวเมลถูกใช้แค่ในหน่วยความจำ
+> ส่งให้ AI สกัด ไม่เก็บเนื้อหาเมลลง DB — เก็บเฉพาะจำนวนเงิน/ร้านค้า/วันที่
+>
+> **หมายเหตุ Vercel:** `0 2 * * *` (วันละครั้ง) อยู่ในโควตา Hobby plan ถ้าเป็น Pro
+> จะเพิ่มความถี่ได้ (เช่น `0 */6 * * *` ทุก 6 ชม.)
 
 ## Phase 3 — Monthly report (เสร็จแล้ว ✅ — เหลือตั้งค่า)
 

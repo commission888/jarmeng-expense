@@ -1,3 +1,4 @@
+import { decryptSecret, encryptSecret } from '@/lib/crypto';
 import { supabase } from '@/lib/supabase';
 
 export interface GmailAccountRecord {
@@ -11,9 +12,10 @@ export interface GmailAccountRecord {
 /**
  * Stores a mailbox connection.
  *
- * NOTE (PDPA): `refresh_token` is long-lived access to a user's mailbox. It is
- * kept in a service-role-only table, but before this goes to production it
- * should be encrypted at rest — see docs/SETUP.md § Gmail.
+ * PDPA: `refresh_token` is long-lived access to a user's mailbox, so it is
+ * encrypted at rest here (and decrypted only in `listGmailAccounts`). The
+ * encrypt/decrypt seam lives at this repo boundary so nothing else touches the
+ * ciphertext. Needs `TOKEN_ENCRYPTION_KEY`.
  */
 export async function saveGmailAccount(
   userId: string,
@@ -23,7 +25,7 @@ export async function saveGmailAccount(
   const { error } = await supabase()
     .from('gmail_accounts')
     .upsert(
-      { user_id: userId, email, refresh_token: refreshToken },
+      { user_id: userId, email, refresh_token: encryptSecret(refreshToken) },
       { onConflict: 'user_id,email' },
     );
 
@@ -37,7 +39,10 @@ export async function listGmailAccounts(): Promise<GmailAccountRecord[]> {
 
   if (error) throw new Error(`Failed to list Gmail accounts: ${error.message}`);
 
-  return (data ?? []) as GmailAccountRecord[];
+  return (data ?? []).map((row) => ({
+    ...(row as GmailAccountRecord),
+    refresh_token: decryptSecret((row as GmailAccountRecord).refresh_token),
+  }));
 }
 
 export async function markSynced(accountId: string): Promise<void> {
@@ -63,4 +68,19 @@ export async function claimEmail(userId: string, messageId: string): Promise<boo
   if (error) throw new Error(`Failed to claim email: ${error.message}`);
 
   return true;
+}
+
+/**
+ * Releases a claim so a later run can retry the message. Called when extraction
+ * *throws* (a transient AI/network error) — a message that merely isn't a
+ * transaction keeps its claim so it's skipped for good.
+ */
+export async function releaseEmail(userId: string, messageId: string): Promise<void> {
+  const { error } = await supabase()
+    .from('processed_emails')
+    .delete()
+    .eq('user_id', userId)
+    .eq('gmail_message_id', messageId);
+
+  if (error) console.error('Failed to release email claim', error);
 }
