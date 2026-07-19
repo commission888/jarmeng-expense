@@ -112,6 +112,19 @@ export async function exchangeCode(code: string): Promise<TokenResponse> {
   return (await response.json()) as TokenResponse;
 }
 
+/**
+ * Thrown when a refresh token is permanently unusable (expired or revoked) — as
+ * opposed to a transient network/5xx error. The sync uses this to tell "ask the
+ * user to reconnect" apart from "retry next run". Testing-mode Google apps expire
+ * refresh tokens after 7 days, so this is not a rare path.
+ */
+export class GmailAuthError extends Error {
+  constructor(message = 'Gmail refresh token is no longer valid') {
+    super(message);
+    this.name = 'GmailAuthError';
+  }
+}
+
 export async function refreshAccessToken(refreshToken: string): Promise<string> {
   const { clientId, clientSecret } = googleConfig();
 
@@ -127,7 +140,13 @@ export async function refreshAccessToken(refreshToken: string): Promise<string> 
   });
 
   if (!response.ok) {
-    throw new Error(`Token refresh failed: ${await response.text()}`);
+    const body = await response.text();
+    // Google answers a dead refresh token with 400 invalid_grant. Everything
+    // else (5xx, network) is transient and should just retry next run.
+    if (response.status === 400 && body.includes('invalid_grant')) {
+      throw new GmailAuthError();
+    }
+    throw new Error(`Token refresh failed: ${body}`);
   }
 
   const { access_token } = (await response.json()) as TokenResponse;

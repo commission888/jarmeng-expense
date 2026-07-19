@@ -4,17 +4,20 @@ import { GeminiClassifier } from '@/lib/ai/gemini';
 import { GeminiEmailExtractor } from '@/lib/ai/gemini-email';
 import { authorizeCron } from '@/lib/cron-auth';
 import { buildSyncQuery, getMessage, listMessageIds } from '@/lib/gmail/api';
-import { refreshAccessToken } from '@/lib/gmail/oauth';
+import { GmailAuthError, refreshAccessToken } from '@/lib/gmail/oauth';
+import { lineClient } from '@/lib/line/client';
 import { keywordKey } from '@/lib/parser/draft';
 import { categorize, type CategorizeDeps } from '@/lib/parser/categorize';
 import {
   claimEmail,
+  deleteGmailAccount,
   listGmailAccounts,
   markSynced,
   releaseEmail,
 } from '@/lib/repo/gmail-accounts';
 import { lookupKeyword, rememberKeyword, touchKeyword } from '@/lib/repo/keywords';
 import { insertTransaction } from '@/lib/repo/transactions';
+import { getLineUserId } from '@/lib/repo/users';
 import type { TransactionDraft } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -56,6 +59,7 @@ export async function GET(request: Request) {
   let recorded = 0;
   let skipped = 0;
   let failed = 0;
+  let reconnectsRequested = 0;
 
   for (const account of accounts) {
     try {
@@ -116,10 +120,53 @@ export async function GET(request: Request) {
       // Only advance the window after a clean pass over this account.
       await markSynced(account.id);
     } catch (accountError) {
-      failed += 1;
-      console.error(`Gmail sync failed for account ${account.id}`, accountError);
+      // A dead refresh token can't fix itself — tell the user to reconnect and
+      // drop the account so we don't retry (and re-notify) a token that's gone.
+      if (accountError instanceof GmailAuthError) {
+        await requestReconnect(account.user_id);
+        await deleteGmailAccount(account.id);
+        reconnectsRequested += 1;
+      } else {
+        failed += 1;
+        console.error(`Gmail sync failed for account ${account.id}`, accountError);
+      }
     }
   }
 
-  return NextResponse.json({ accounts: accounts.length, recorded, skipped, failed });
+  return NextResponse.json({
+    accounts: accounts.length,
+    recorded,
+    skipped,
+    failed,
+    reconnectsRequested,
+  });
+}
+
+/**
+ * Pushes a "please reconnect Gmail" nudge. Best-effort: a push failure is logged,
+ * not thrown — the account is being dropped regardless, so we don't want a LINE
+ * hiccup to leave a dead token in place.
+ */
+async function requestReconnect(userId: string): Promise<void> {
+  try {
+    const lineUserId = await getLineUserId(userId);
+    if (!lineUserId) return;
+
+    await lineClient().pushMessage({
+      to: lineUserId,
+      messages: [
+        {
+          type: 'text',
+          text: [
+            '⚠️ การเชื่อมต่อ Gmail หมดอายุแล้ว',
+            'ระบบจึงหยุดดึงรายจ่ายจากอีเมลให้ชั่วคราว',
+            '',
+            'เปิดแดชบอร์ดแล้วกด "เชื่อมต่อ Gmail" อีกครั้ง เพื่อดึงต่อได้เลยครับ',
+          ].join('\n'),
+        },
+      ],
+    });
+  } catch (error) {
+    console.error(`Failed to notify user ${userId} to reconnect Gmail`, error);
+  }
 }

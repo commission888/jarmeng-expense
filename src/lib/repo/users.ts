@@ -50,6 +50,20 @@ export async function listAllUsers(pageSize = 1000): Promise<UserRecord[]> {
   return all;
 }
 
+/** The LINE user id for an internal id — needed to push a message to a user we
+ *  only hold by `user_id` (e.g. a Gmail account row). */
+export async function getLineUserId(userId: string): Promise<string | null> {
+  const { data, error } = await supabase()
+    .from('users')
+    .select('line_user_id')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to load user: ${error.message}`);
+
+  return (data as { line_user_id: string } | null)?.line_user_id ?? null;
+}
+
 export async function findUserByLineId(lineUserId: string): Promise<UserRecord | null> {
   const { data, error } = await supabase()
     .from('users')

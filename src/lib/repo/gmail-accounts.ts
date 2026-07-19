@@ -45,6 +45,17 @@ export async function listGmailAccounts(): Promise<GmailAccountRecord[]> {
   }));
 }
 
+/**
+ * Removes a mailbox connection — called when its refresh token is permanently
+ * dead, so the sync stops retrying (and re-notifying) a token that can't work.
+ * The user reconnects from the dashboard, which upserts a fresh row.
+ */
+export async function deleteGmailAccount(accountId: string): Promise<void> {
+  const { error } = await supabase().from('gmail_accounts').delete().eq('id', accountId);
+
+  if (error) console.error('Failed to delete Gmail account', error);
+}
+
 export async function markSynced(accountId: string): Promise<void> {
   const { error } = await supabase()
     .from('gmail_accounts')
